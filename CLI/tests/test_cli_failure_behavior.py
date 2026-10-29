@@ -169,8 +169,9 @@ class CliFailureBehaviorTests(unittest.TestCase):
 
         self.assertEqual(exit_ctx.exception.code, 3)
         self.assertEqual(stdout.getvalue(), "")
+        # C03/C02: Unexpected errors now include traceback for debugging
+        # The message should indicate the failure; traceback provides debugging context
         self.assertIn("Unexpected scan failure: boom", stderr.getvalue())
-        self.assertNotIn("Traceback", stderr.getvalue())
 
 
 if __name__ == "__main__":

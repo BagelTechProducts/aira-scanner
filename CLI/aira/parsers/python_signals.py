@@ -10,7 +10,6 @@ from typing import Any, Dict, Iterable, List, Optional
 from aira.parser_health import ParserHealth
 from aira.parsers.base import ParserOutput, build_signal
 
-
 LOG_LEVELS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "fatal", "audit"}
 RETRY_NAMES = {"retry", "retrying", "backoff", "sleep"}
 SPAWN_NAMES = {"create_task", "ensure_future", "submit", "start", "spawn"}

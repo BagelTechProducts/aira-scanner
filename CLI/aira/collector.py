@@ -28,7 +28,6 @@ from aira.research import (
 )
 from aira.scanner import AIRAScanner, ScanResult, result_to_json
 
-
 DEFAULT_MANIFESTS_TABLE = "aira_sample_manifests"
 
 

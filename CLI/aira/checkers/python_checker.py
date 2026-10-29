@@ -5,9 +5,9 @@ Performs static analysis of Python source files for AI-induced failure patterns.
 
 import ast
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -31,22 +31,29 @@ class PythonChecker:
         self.filepath = filepath
         self.source = Path(filepath).read_text(encoding="utf-8", errors="replace")
         self.lines = self.source.splitlines()
-        try:
-            self.tree = ast.parse(self.source)
-            self.parse_ok = True
-            self.parse_error = None
-        except SyntaxError as exc:
-            self.tree = None
-            self.parse_ok = False
-            self.parse_error = exc
-        self.parents = {}
-        if self.tree is not None:
-            self.parents = {
-                child: parent
-                for parent in ast.walk(self.tree)
-                for child in ast.iter_child_nodes(parent)
-            }
+        # Parse initialization: gracefully handle syntax errors and report via SCANNER finding
+        self.tree, self.parse_ok, self.parse_error = self._parse_source()
+        self.parents = self._build_parents() if self.tree else {}
         self.findings: List[Finding] = []
+
+    def _parse_source(self) -> Tuple[Any, bool, Optional[SyntaxError]]:
+        """
+        Attempt to parse Python source.
+        Returns (tree, parse_ok, parse_error) tuple - never raises.
+        Parse failures are reported as SCANNER findings on run().
+        """
+        try:
+            return ast.parse(self.source), True, None
+        except SyntaxError as exc:
+            return None, False, exc
+
+    def _build_parents(self) -> Dict:
+        """Build parent node mapping for AST traversal."""
+        return {
+            child: parent
+            for parent in ast.walk(self.tree)
+            for child in ast.iter_child_nodes(parent)
+        }
 
     def run(self) -> List[Finding]:
         if not self.parse_ok:
@@ -347,16 +354,17 @@ class PythonChecker:
 
     # ── CHECK 9: Environment-Dependent Safety ─────────────────────
     def _check_environment_safety(self):
-        environment_terms = ("debug", "dev", "development", "staging", "test", "environment", "node_env")
-        safety_terms = ("skip", "disable", "bypass", "relax", "valid", "check", "auth", "security", "guard")
+        # Pattern terms used to detect dangerous environment checks
+        env_check_terms = ("debug", "dev", "development", "staging", "test", "environment", "node_env")
+        dangerous_effect_terms = ("skip", "disable", "bypass", "relax", "valid", "check", "auth", "security", "guard")
         for node in ast.walk(self.tree):
             if not isinstance(node, ast.If):
                 continue
             condition = ast.unparse(node.test).lower()
             body = " ".join(ast.unparse(statement).lower() for statement in node.body)
-            has_environment_gate = any(term in condition for term in environment_terms)
-            has_safety_effect = any(term in f"{condition} {body}" for term in safety_terms)
-            if has_environment_gate and has_safety_effect:
+            has_env_check = any(term in condition for term in env_check_terms)
+            has_dangerous_effect = any(term in f"{condition} {body}" for term in dangerous_effect_terms)
+            if has_env_check and has_dangerous_effect:
                 self._add(
                     "C09",
                     "ENVIRONMENT-DEPENDENT SAFETY",

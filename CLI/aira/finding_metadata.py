@@ -14,7 +14,6 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-
 FINGERPRINT_VERSION = "aira-finding-v1"
 
 

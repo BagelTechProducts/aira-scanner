@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
-
 ROLLBACK_NAMES = {"rollback", "revert", "compensate", "abort_transaction"}
 COMMIT_NAMES = {"commit", "flush", "publish"}
 

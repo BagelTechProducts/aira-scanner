@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from aira.parsers.base import digest, normalize_evidence
 
 try:
-    from tree_sitter import Language, Parser
     import tree_sitter_javascript
     import tree_sitter_typescript
+    from tree_sitter import Language, Parser
 except ImportError:  # pragma: no cover - package dependencies should provide these
     Language = None
     Parser = None

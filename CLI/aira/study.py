@@ -21,7 +21,6 @@ from aira.comparison import build_suppression_matrix, extract_scan
 from aira.llm import LLMConfig
 from aira.scanner import AIRAScanner, ScanResult
 
-
 VALID_STUDY_ENGINES = {"static", "llm", "hybrid"}
 
 

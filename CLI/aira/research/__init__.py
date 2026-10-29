@@ -6,6 +6,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+from aira.research.airtable import (
+    airtable_config_snapshot,
+    check_airtable_connection,
+)
 from aira.research.base import (
     BASELINE_FIELD_ORDER,
     CHECK_IDS,
@@ -15,18 +19,17 @@ from aira.research.base import (
     FTI_V1_WEIGHTS_BY_KEY,
     OPTIONAL_FIELD_ORDER,
     RESEARCH_BACKEND_ORDER,
-    ResearchSubmissionError,
     UNKNOWN_FIELD_RE,
     VALID_ATTRIBUTION_CLASSES,
     VALID_CHECK_STATUSES,
     VALID_RESEARCH_BACKENDS,
     VALID_SOURCE_KINDS,
+    ResearchSubmissionError,
     _canonicalize,
     _env,
     _sha256_hex,
     infer_research_backend,
 )
-
 from aira.research.helpers import (
     build_aggregate_submission_fields,
     build_baseline_submission_fields,
@@ -42,22 +45,15 @@ from aira.research.helpers import (
     normalize_checks_json,
     risk_level_for_fti,
 )
-
+from aira.research.jsonl_backend import (
+    check_jsonl_connection,
+    jsonl_config_snapshot,
+)
 from aira.research.supabase import (
     _supabase_request_json,
     _supabase_target,
     check_supabase_connection,
     supabase_config_snapshot,
-)
-
-from aira.research.airtable import (
-    airtable_config_snapshot,
-    check_airtable_connection,
-)
-
-from aira.research.jsonl_backend import (
-    check_jsonl_connection,
-    jsonl_config_snapshot,
 )
 
 

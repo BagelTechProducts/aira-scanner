@@ -5,23 +5,20 @@ AIRA research — shared utility functions for building submission payloads.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib import error as urllib_error
 
 from aira import __version__ as AIRA_VERSION
-from aira.scanner import CHECKS, ScanResult
 from aira.research.base import (
-    ResearchSubmissionError,
     CHECK_IDS,
     DEFAULT_SCORING_VERSION,
     FTI_V1_TOTAL_WEIGHT,
     FTI_V1_WEIGHTS_BY_KEY,
     VALID_ATTRIBUTION_CLASSES,
-    VALID_CHECK_STATUSES,
     VALID_SOURCE_KINDS,
+    ResearchSubmissionError,
     _canonicalize,
     _env,
     _non_empty_str,
@@ -29,6 +26,7 @@ from aira.research.base import (
     _normalize_status,
     _sha256_hex,
 )
+from aira.scanner import CHECKS, ScanResult
 
 
 def _submission_option(submission_options: Optional[Dict[str, Any]], key: str, *env_names: str) -> Optional[str]:
@@ -509,6 +507,7 @@ def _decode_error_message(raw: str, exc: urllib_error.HTTPError) -> str:
             return str(err.get("message") or err.get("type") or raw or exc)
         if err:
             return str(err)
-    except Exception:
+    except (json.JSONDecodeError, ValueError, KeyError):
+        # C03: Broad error parsing - fall back to raw message on any parse failure
         pass
     return raw or str(exc)

@@ -17,7 +17,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from aira.scanner import CHECKS
 
-
 COMPARISON_VERSION = "aira-comparison-v2"
 
 

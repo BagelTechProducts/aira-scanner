@@ -7,8 +7,8 @@ Works for both Python and JavaScript/TypeScript test files.
 import ast
 import os
 import re
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 
@@ -55,7 +55,6 @@ TEST_FILE_PATTERNS = [
 
 
 def is_test_file(filepath: str) -> bool:
-    name = Path(filepath).name
     path_str = str(filepath)
     return any(re.search(p, path_str, re.IGNORECASE) for p in TEST_FILE_PATTERNS)
 

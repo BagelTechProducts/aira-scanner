@@ -11,9 +11,8 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from urllib import error, parse, request
-
 
 AUTO_PROVIDER_ORDER = (
     "openai-compatible",
@@ -448,7 +447,8 @@ def _resolved_provider_order(config: LLMConfig) -> List[str]:
     return [provider for provider in AUTO_PROVIDER_ORDER if _is_configured(provider, config)]
 
 
-def _runner_for(provider: str):
+def _runner_for(provider: str) -> Callable[["LLMConfig"], Dict[str, Any]]:
+    """Return the appropriate LLM call function for the given provider."""
     if provider == "openai-compatible":
         return lambda cfg: _call_openai_compatible(cfg, "openai-compatible")
     if provider == "ollama":
@@ -483,7 +483,10 @@ def run_llm_json_audit(config: LLMConfig, system_prompt: str, user_prompt: str) 
         for attempt in range(1, MAX_ATTEMPTS_PER_PROVIDER + 1):
             try:
                 return runner(config)
-            except Exception as exc:
+            except (LLMRoutingError, ValueError, json.JSONDecodeError,
+                    error.URLError, error.HTTPError, UnicodeDecodeError) as exc:
+                # C03: Retry loop - catch expected errors from providers
+                # Network, JSON, and routing errors are expected failure modes
                 errors.append(f"{provider} attempt {attempt}: {exc}")
 
     raise LLMRoutingError("All configured providers failed. " + " | ".join(errors))

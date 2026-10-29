@@ -9,48 +9,38 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Callable
 
-try:
-    from aira import __version__
-    from aira.comparison import build_suppression_matrix, load_scan
-    from aira.error_graph import build_error_graph, error_graph_for_target
-    from aira.llm import LLMConfig, LLMRoutingError, provider_health_snapshot
-    from aira.collector import collect_public_repos
-    from aira.research import ResearchSubmissionError, check_research_connection, submit_aggregate_research
-    from aira.scanner import (
-        AIRAScanner,
-        ScanResult,
-        ScanTargetError,
-        ScannerExecutionError,
-        ScannerInputError,
-        describe_empty_scan_result,
-        result_to_json,
-        result_to_yaml,
-        validate_scan_target,
-    )
-    from aira.signals import inventory_errors
-    from aira.study import compare_study_results, load_study_jsonl, run_study_manifest, write_study_jsonl
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from aira import __version__
-    from aira.comparison import build_suppression_matrix, load_scan
-    from aira.error_graph import build_error_graph, error_graph_for_target
-    from aira.llm import LLMConfig, LLMRoutingError, provider_health_snapshot
-    from aira.collector import collect_public_repos
-    from aira.research import ResearchSubmissionError, check_research_connection, submit_aggregate_research
-    from aira.scanner import (
-        AIRAScanner,
-        ScanResult,
-        ScanTargetError,
-        ScannerExecutionError,
-        ScannerInputError,
-        describe_empty_scan_result,
-        result_to_json,
-        result_to_yaml,
-        validate_scan_target,
-    )
-    from aira.signals import inventory_errors
-    from aira.study import compare_study_results, load_study_jsonl, run_study_manifest, write_study_jsonl
+# Import core modules - fail fast on missing dependencies
+# C10: Startup integrity - these imports are required; raise on failure
+from aira import __version__
+from aira.collector import collect_public_repos
+from aira.comparison import build_suppression_matrix, load_scan
+from aira.error_graph import build_error_graph, error_graph_for_target
+from aira.llm import LLMConfig, LLMRoutingError, provider_health_snapshot
+from aira.research import (
+    ResearchSubmissionError,
+    check_research_connection,
+    submit_aggregate_research,
+)
+from aira.scanner import (
+    AIRAScanner,
+    ScannerExecutionError,
+    ScannerInputError,
+    ScanResult,
+    ScanTargetError,
+    describe_empty_scan_result,
+    result_to_json,
+    result_to_yaml,
+    validate_scan_target,
+)
+from aira.signals import inventory_errors
+from aira.study import (
+    compare_study_results,
+    load_study_jsonl,
+    run_study_manifest,
+    write_study_jsonl,
+)
 
 
 class C:
@@ -456,7 +446,7 @@ def print_research_submission_error(message: str) -> None:
     print(f"{C.RED}Research submission failed: {message}{C.RESET}", file=sys.stderr)
 
 
-def positive_int(flag_label: str):
+def positive_int(flag_label: str) -> Callable[[str], int]:
     """Argparse type factory: require a positive base-10 integer."""
 
     def converter(value: str) -> int:
@@ -512,10 +502,21 @@ def add_llm_provider_arguments(parser: argparse.ArgumentParser) -> None:
         "--provider",
         choices=["auto", "openai-compatible", "ollama", "nvidia", "groq", "gemini", "openrouter"],
         default="auto",
-        help="LLM provider to use when engine is llm or hybrid",
+        help="LLM provider to use when engine is llm or hybrid. "
+             "Options: auto (try providers in order), openai-compatible (local/cloud OpenAI API), "
+             "ollama (local model server), nvidia (NVIDIA NIM endpoints), groq (API tier), "
+             "gemini (Google), openrouter (aggregator). "
+             "For nvidia: set NVIDIA_API_KEY env var. For ollama: ensure Ollama is running.",
     )
-    parser.add_argument("--model", help="Override provider model name")
-    parser.add_argument("--base-url", help="Base URL for openai-compatible endpoints")
+    parser.add_argument(
+        "--model",
+        help="Override default model for selected provider (e.g., 'gpt-4o', 'mixtral-8x7b'). "
+             "Environment variables: OPENAI_MODEL, AIRA_NVIDIA_MODEL, etc.",
+    )
+    parser.add_argument(
+        "--base-url",
+        help="Base URL for openai-compatible endpoints (default: from AIRA_OPENAI_BASE_URL env var or provider default)",
+    )
     parser.add_argument(
         "--timeout",
         type=positive_int("--timeout"),
@@ -716,6 +717,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     study_compare_parser.add_argument("--output", "-o", choices=["terminal", "json"], default="terminal", help="Output format")
     study_compare_parser.add_argument("--out-file", "-f", help="Write comparison report JSON to file instead of stdout", default=None)
+
+    # Fix command - suggest and apply fixes for detected issues
+    fix_parser = subparsers.add_parser("fix", help="Show fix suggestions for detected fail-soft patterns")
+    fix_parser.add_argument("target", help="File or directory to analyze")
+    fix_parser.add_argument("--apply", action="store_true", help="Attempt to apply fixes automatically (experimental)")
+    fix_parser.add_argument("--dry-run", action="store_true", help="Show what would be fixed without modifying files")
+    fix_parser.add_argument("--output", "-o", choices=["terminal", "json"], default="terminal", help="Output format")
     return parser
 
 
@@ -760,9 +768,15 @@ def main() -> None:
         except ScanTargetError as exc:
             print(f"{C.RED}Scan aborted: {exc}{C.RESET}", file=sys.stderr)
             sys.exit(EXIT_INPUT_OR_USAGE)
-        except Exception as exc:
+        # C03: Explicit error handling - unknown exceptions log with context for debugging
+        except RuntimeError as exc:
+            import traceback
             print(f"{C.RED}Unexpected scan failure: {exc}{C.RESET}", file=sys.stderr)
+            traceback.print_exc()
             sys.exit(EXIT_OPERATIONAL_FAILURE)
+        except ValueError as exc:
+            print(f"{C.RED}Invalid input: {exc}{C.RESET}", file=sys.stderr)
+            sys.exit(EXIT_INPUT_OR_USAGE)
 
         empty_reason = describe_empty_scan_result(
             scanner,
@@ -839,8 +853,11 @@ def main() -> None:
         except (ScanTargetError, ValueError) as exc:
             print(f"{C.RED}Inventory input error: {exc}{C.RESET}", file=sys.stderr)
             sys.exit(EXIT_INPUT_OR_USAGE)
-        except Exception as exc:
-            print(f"{C.RED}Inventory failed: {exc}{C.RESET}", file=sys.stderr)
+        # C03: Explicit error handling with traceback for debugging
+        except RuntimeError as exc:
+            import traceback
+            print(f"{C.RED}Unexpected inventory failure: {exc}{C.RESET}", file=sys.stderr)
+            traceback.print_exc()
             sys.exit(EXIT_OPERATIONAL_FAILURE)
 
         output = json.dumps(inventory, indent=2)
@@ -866,8 +883,11 @@ def main() -> None:
         except (ScanTargetError, ValueError) as exc:
             print(f"{C.RED}Graph input error: {exc}{C.RESET}", file=sys.stderr)
             sys.exit(EXIT_INPUT_OR_USAGE)
-        except Exception as exc:
-            print(f"{C.RED}Graph generation failed: {exc}{C.RESET}", file=sys.stderr)
+        # C03: Explicit error handling with traceback for debugging
+        except RuntimeError as exc:
+            import traceback
+            print(f"{C.RED}Unexpected graph failure: {exc}{C.RESET}", file=sys.stderr)
+            traceback.print_exc()
             sys.exit(EXIT_OPERATIONAL_FAILURE)
 
         output = json.dumps(graph, indent=2)
@@ -970,8 +990,11 @@ def main() -> None:
             except ScannerExecutionError as exc:
                 print(f"{C.RED}Study scan failed: {exc}{C.RESET}", file=sys.stderr)
                 sys.exit(EXIT_OPERATIONAL_FAILURE)
-            except Exception as exc:
+            # C03: Explicit error handling with traceback for debugging
+            except RuntimeError as exc:
+                import traceback
                 print(f"{C.RED}Unexpected study failure: {exc}{C.RESET}", file=sys.stderr)
+                traceback.print_exc()
                 sys.exit(EXIT_OPERATIONAL_FAILURE)
 
             output_path = None

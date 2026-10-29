@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Mapping, Sequence
 
-from aira.scanner import AIRAScanner, ScanResult, SUPPORTED_EXTENSIONS
+from aira.scanner import SUPPORTED_EXTENSIONS, AIRAScanner, ScanResult
 
 try:
     import esprima  # type: ignore

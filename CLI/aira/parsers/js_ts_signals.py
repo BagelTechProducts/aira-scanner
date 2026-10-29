@@ -16,9 +16,9 @@ except ImportError:  # pragma: no cover - environment dependent
     esprima = None
 
 try:
-    from tree_sitter import Language, Parser
     import tree_sitter_javascript
     import tree_sitter_typescript
+    from tree_sitter import Language, Parser
 except ImportError:  # pragma: no cover - labeled fallback covers broken installs
     Language = None
     Parser = None

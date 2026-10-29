@@ -9,8 +9,8 @@ from typing import Any, Dict, Optional
 from urllib import error, parse, request
 
 from aira.research.base import (
-    ResearchSubmissionError,
     UNKNOWN_FIELD_RE,
+    ResearchSubmissionError,
     _env,
 )
 from aira.research.helpers import (

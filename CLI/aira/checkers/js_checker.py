@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional, Tuple
 
 try:
     import esprima
@@ -40,19 +40,25 @@ class JSChecker:
         self.code_lines = self._strip_comments_strings_and_regexes(self.source).splitlines()
         self.findings: List[Finding] = []
         self._seen = set()
-        self.tree = None
-        self.parse_ok = False
-        if esprima is not None:
+        # Parser parsing: gracefully degrade to heuristic-only on parse failure
+        self.tree, self.parse_ok = self._try_parse()
+
+    def _try_parse(self) -> Tuple[Optional[Any], bool]:
+        """
+        Attempt to parse source with esprima.
+        Returns (tree, parse_ok) tuple - never raises, always returns usable state.
+        Parse failures are handled silently with fallback to heuristic analysis.
+        """
+        if esprima is None:
+            return None, False
+        try:
+            return esprima.parseModule(self.source, loc=True, tolerant=True), True
+        except Exception:
             try:
-                self.tree = esprima.parseModule(self.source, loc=True, tolerant=True)
-                self.parse_ok = True
+                return esprima.parseScript(self.source, loc=True, tolerant=True), True
             except Exception:
-                try:
-                    self.tree = esprima.parseScript(self.source, loc=True, tolerant=True)
-                    self.parse_ok = True
-                except Exception:
-                    self.tree = None
-                    self.parse_ok = False
+                # Both module and script parsing failed - use heuristic mode
+                return None, False
 
     @staticmethod
     def _strip_comments_strings_and_regexes(source: str) -> str:

@@ -11,10 +11,8 @@ from urllib import error, parse, request
 from aira.research.base import (
     ResearchSubmissionError,
     _env,
-    _non_empty_str,
 )
 from aira.research.helpers import (
-    _decode_error_message,
     build_submission_bundle,
     finalize_submission_bundle,
 )

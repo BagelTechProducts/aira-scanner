@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 
 from aira.parser_health import ParserHealth
 
-
 SIGNAL_SCHEMA_VERSION = "aira-error-signal-v1"
 
 

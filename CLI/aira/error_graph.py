@@ -12,7 +12,6 @@ from aira.signals import inventory_errors
 from aira.status_mapping import status_mapping
 from aira.symbol_index import build_symbol_index
 
-
 GRAPH_SCHEMA_VERSION = "aira-error-graph-v1"
 
 

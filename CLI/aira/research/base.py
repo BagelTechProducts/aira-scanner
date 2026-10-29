@@ -8,10 +8,9 @@ import hashlib
 import json
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from aira.scanner import CHECKS
-
 
 BASELINE_FIELD_ORDER = (
     "Submitted At",

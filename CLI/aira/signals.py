@@ -10,7 +10,6 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 
 from aira.parsers import JavaScriptTypeScriptSignalParser, PythonSignalParser
 
-
 INVENTORY_SCHEMA_VERSION = "aira-error-inventory-v1"
 SIGNAL_EXTENSIONS = {
     ".py": "python",
