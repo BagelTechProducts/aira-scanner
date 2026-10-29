@@ -1,0 +1,4 @@
+# Requirements for NVIDIAReview MCP Server
+aiohttp>=3.9,<4.0
+mcp>=0.1.0
+python-mcp>=0.1.0
