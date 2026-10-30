@@ -153,22 +153,22 @@ def get_fix_suggestion(check_id: str) -> Optional[Dict[str, str]]:
 def generate_fix_report(findings: List[Dict[str, Any]]) -> str:
     """Generate a human-readable fix report for all findings."""
     lines = ["\n=== AIRA Fix Suggestions ===", ""]
-    
+
     for finding in findings:
         check_id = finding.get("check_id")
         suggestion = get_fix_suggestion(check_id)
-        
+
         if suggestion:
             lines.append(f"[{finding['severity']}] {finding['file']}:{finding['line']}")
             lines.append(f"  Problem: {suggestion['problem']}")
             lines.append(f"  Fix: {suggestion['suggestion']}")
-            lines.append(f"  Suggestion:")
-            for l in suggestion['code_example'].strip().split('\n'):
-                lines.append(f"    {l}")
+            lines.append("  Suggestion:")
+            for line in suggestion['code_example'].strip().split('\n'):
+                lines.append(f"    {line}")
             lines.append("")
         else:
             lines.append(f"[{finding['severity']}] {finding['file']}:{finding['line']}")
             lines.append(f"  Issue: {check_id} - See AIRA documentation for pattern definition")
             lines.append("")
-    
+
     return '\n'.join(lines)

@@ -9,7 +9,11 @@ from pathlib import Path
 from unittest import mock
 
 from aira.cli import main
-from aira.collector import build_sample_manifest_record, collect_public_repos, load_collection_manifest
+from aira.collector import (
+    build_sample_manifest_record,
+    collect_public_repos,
+    load_collection_manifest,
+)
 from aira.scanner import ScanResult
 
 

@@ -11,8 +11,8 @@ from urllib import error
 from aira.cli import main
 from aira.research import (
     build_aggregate_submission_fields,
-    build_submission_bundle,
     build_structured_submission_record,
+    build_submission_bundle,
     check_airtable_connection,
     check_research_connection,
     compute_fti_v1,

@@ -1,48 +1,9 @@
-# Dockerfile for NVIDIAReview MCP Server
 FROM python:3.11-slim
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user
-RUN useradd -m -u 1000 reviewer
+WORKDIR /opt/aira-src
+COPY CLI/ ./CLI/
+RUN pip install --no-cache-dir ./CLI && useradd -m -u 1000 reviewer
 USER reviewer
-WORKDIR /home/reviewer
-
-# Clone and install aira-scanner
-RUN git clone https://github.com/bdblabs/aira-scanner.git /opt/aira-src
-WORKDIR /opt/aira-src/CLI
-
-# Install aira with dev dependencies
-RUN pip install --no-cache-dir -e ".[dev]"
-
-# Install MCP server dependencies
-RUN pip install --no-cache-dir aiohttp mcp
-
-# Copy MCP server
-COPY --chown=reviewer:reviewer \
-  CLI/aira/mcp/ \
-  /opt/aira-src/CLI/aira/mcp/
-
-# Set working directory
-WORKDIR /opt/aira-src/CLI
-
-# Environment defaults
-ENV NVIDIA_API_KEY=${NVIDIA_API_KEY}
-ENV AIRA_NVIDIA_MODEL="openai/gpt-oss-20b"
-ENV AIRA_PROVIDER="nvidia"
-ENV AIRA_TIMEOUT=120
-ENV AIRA_MAX_CONTEXT_CHARS=120000
-
-# Expose MCP port
+ENV AIRA_NVIDIA_MODEL="openai/gpt-oss-20b" AIRA_PROVIDER="nvidia" AIRA_TIMEOUT=120 AIRA_MAX_CONTEXT_CHARS=120000
 EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python3 -c "from aira.mcp.server import validate_configuration; exit(0 if validate_configuration() else 1)" || exit 1
-
-# Run MCP server
-CMD ["python3", "-m", "aira.mcp.server", "--host", "0.0.0.0", "--port", "8080"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"
+CMD ["python", "-m", "aira.mcp.server", "--host", "0.0.0.0", "--port", "8080"]

@@ -10,7 +10,7 @@ Provides MCP endpoints for:
 Usage:
     # Via MCP client
     mcp-client connect stdio python -m aira.mcp.server --stdio
-    
+
     # Or via HTTP
     python -m aira.mcp.server --host 0.0.0.0 --port 8080
 """

@@ -7,7 +7,12 @@ from pathlib import Path
 from unittest import mock
 
 from aira.cli import main
-from aira.study import compare_study_results, load_study_jsonl, run_study_manifest, write_study_jsonl
+from aira.study import (
+    compare_study_results,
+    load_study_jsonl,
+    run_study_manifest,
+    write_study_jsonl,
+)
 
 
 def _write_python_sample(path: Path) -> None:

@@ -7,7 +7,12 @@ from pathlib import Path
 from unittest import mock
 
 from aira.cli import EXIT_INPUT_OR_USAGE, EXIT_OPERATIONAL_FAILURE, main
-from aira.scanner import AIRAScanner, ScanTargetError, describe_empty_scan_result, validate_scan_target
+from aira.scanner import (
+    AIRAScanner,
+    ScanTargetError,
+    describe_empty_scan_result,
+    validate_scan_target,
+)
 
 
 class ValidateScanTargetTests(unittest.TestCase):

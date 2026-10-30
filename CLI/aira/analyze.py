@@ -2,13 +2,9 @@
 AIRA Analyzer — Unified Engine for fail-soft pattern detection.
 
 This module provides a single, authoritative Engine class that consolidates
-the scanning logic for static, LLM, and hybrid modes. All other entry points
-(scanner.py, cli.py) delegate to this engine.
+the scanning logic for static, LLM, and hybrid modes. This is an optional adapter around the existing scanner; the CLI continues
+to use AIRAScanner directly.
 
-Change Policy:
-- All scans MUST go through Engine.execute()
-- Exit codes derived from EngineResult
-- Findings normalized via normalize_finding() before return
 """
 
 from __future__ import annotations
@@ -64,7 +60,7 @@ class EngineConfig:
             mode=mode,
             provider=provider,
             model=os.getenv("NVIDIA_MODEL") or os.getenv("AIRA_NVIDIA_MODEL"),
-            base_url=os.getenv("NVIDIA_BASE_URL") or "https://integrate.api.nvidia.com/v1",
+            base_url=os.getenv("AIRA_OPENAI_BASE_URL"),
         )
 
 
@@ -158,28 +154,21 @@ class Engine:
         # Build scanner and execute
         exclude = self.config.exclude_dirs or []
         scanner = AIRAScanner(str(self.config.target), exclude_dirs=exclude)
-        result = scanner.scan(mode=self.config.mode.value, max_context_chars=self.config.max_context_chars)
-
-        # Normalize findings
+        from aira.llm import LLMConfig
+        result = scanner.scan(
+            mode=self.config.mode.value,
+            llm_config=LLMConfig(
+                provider=self.config.provider or "auto", model=self.config.model,
+                base_url=self.config.base_url, timeout_seconds=self.config.timeout_seconds,
+                max_context_chars=self.config.max_context_chars,
+            ),
+        )
         normalized = [normalize_finding(f) for f in result.findings]
-
-        # Compute check results
-        check_results: Dict[str, str] = {}
-        for check_id in ["C01", "C02", "C03", "C04", "C05", "C06",
-                         "C07", "C08", "C09", "C10", "C11", "C12",
-                         "C13", "C14", "C15"]:
-            if any(f["check_id"] == check_id for f in normalized):
-                check_results[check_id.lower()] = "FAIL"
-            else:
-                check_results[check_id.lower()] = "PASS"
-
-        # C07 and C12 are always UNKNOWN (human review)
-        check_results["logic_consistency"] = "UNKNOWN"
-        check_results["lineage"] = "UNKNOWN"
+        check_results = dict(result.check_results)
 
         # Compute exit code
-        exit_code = 0
-        if self.config.fail_on != FailOn.NONE:
+        exit_code = 2 if any(f["check_id"] == "SCANNER" for f in normalized) else 0
+        if exit_code == 0 and self.config.fail_on != FailOn.NONE:
             severity_order = {"HIGH": 4, "MEDIUM": 3, "LOW": 2, "PASS": 1}
             threshold = severity_order.get(self.config.fail_on.value.upper(), 0)
 
@@ -189,9 +178,12 @@ class Engine:
                     break
 
         return EngineResult(
-            scan_id="scan-" + hashlib.md5(str(self.config.target).encode()).hexdigest()[:8],
+            scan_id="scan-" + hashlib.sha256(str(self.config.target).encode()).hexdigest()[:8],
             target=str(self.config.target),
             scanned_at=datetime.now(timezone.utc).isoformat(),
+            files_discovered=result.summary.get("files_discovered", result.files_scanned),
+            files_partial=result.summary.get("files_partial", 0),
+            files_failed=result.summary.get("files_failed", 0),
             files_scanned=result.files_scanned,
             findings=normalized,
             check_results=check_results,

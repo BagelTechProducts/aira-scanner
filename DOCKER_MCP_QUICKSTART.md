@@ -1,5 +1,17 @@
 # NVIDIAReview MCP Server - Quick Start Guide
 
+> Integration status: use `python -m aira.mcp.server --stdio` with standard MCP clients.
+> HTTP is a simple JSON-RPC adapter, not a Streamable HTTP/SSE transport; it binds to loopback by default.
+> Send JSON-RPC requests with `"jsonrpc": "2.0"`, an `id`, and a `method`.
+> Tool output is in `result.content` text blocks; resources are in `result.contents`.
+> The static review supports Python C01/C03 only; NVIDIA review requires your own runtime key.
+> Committed documentation covers C01–C03; fix templates cover C01–C05, C10, and C15.
+> `aira fix --dry-run` reports suggestions. Automatic `--apply` is not implemented and returns an error.
+> The analyzer is an optional scanner adapter; existing CLI scans still use AIRAScanner directly.
+> Docker builds the local checkout. Start with `docker compose -f docker-compose.mcp.yml up --build nvidiareview-mcp`.
+> Docker validation requires a running Docker service. No live NVIDIA request was made during integration.
+
+
 ## Prerequisites
 
 - Docker installed

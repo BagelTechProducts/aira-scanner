@@ -1,5 +1,17 @@
 # NVIDIAReview Integration Manual
 
+> Integration status: use `python -m aira.mcp.server --stdio` with standard MCP clients.
+> HTTP is a simple JSON-RPC adapter, not a Streamable HTTP/SSE transport; it binds to loopback by default.
+> Send JSON-RPC requests with `"jsonrpc": "2.0"`, an `id`, and a `method`.
+> Tool output is in `result.content` text blocks; resources are in `result.contents`.
+> The static review supports Python C01/C03 only; NVIDIA review requires your own runtime key.
+> Committed documentation covers C01–C03; fix templates cover C01–C05, C10, and C15.
+> `aira fix --dry-run` reports suggestions. Automatic `--apply` is not implemented and returns an error.
+> The analyzer is an optional scanner adapter; existing CLI scans still use AIRAScanner directly.
+> Docker builds the local checkout. Start with `docker compose -f docker-compose.mcp.yml up --build nvidiareview-mcp`.
+> Docker validation requires a running Docker service. No live NVIDIA request was made during integration.
+
+
 ## Overview
 
 This document explains the AIRA Scanner enhancements and how to leverage them across different AI modes for cross-model review.
@@ -11,7 +23,7 @@ This document explains the AIRA Scanner enhancements and how to leverage them ac
 ### 1. Fix Suggestions Module (`aira/fix/`)
 Intelligent suggestions for fixing fail-soft patterns:
 - C01: Success Integrity Violations
-- C02: Audit & Evidence Integrity Gaps  
+- C02: Audit & Evidence Integrity Gaps
 - C03: Broad Exception Suppression
 - C04: Fallback & Degradation
 - C05: Bypass & Override Paths
@@ -315,12 +327,12 @@ tasks:
   - action: run_mcp_server
     config:
       command: "python -m aira.mcp.server --stdio"
-      
+
   - action: call_mcp_tool
     tool: review_code
     arguments:
       code: "{{generated_code}}"
-      
+
   - action: apply_fixes
     from: mcp_result
 ```

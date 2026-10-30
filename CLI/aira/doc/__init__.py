@@ -8,7 +8,7 @@ This helps prevent these errors by understanding the patterns before they occur.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -205,7 +205,7 @@ def to_markdown() -> str:
         "---",
         "",
     ]
-    
+
     for check_id in sorted(PATTERNS.keys()):
         p = PATTERNS[check_id]
         lines.extend([
@@ -242,7 +242,7 @@ def to_markdown() -> str:
             "```",
             "",
         ])
-    
+
     lines.extend([
         "# Prevention Guidelines",
         "",
@@ -251,7 +251,7 @@ def to_markdown() -> str:
     ])
     for guideline in to_machine_readable()["prevention_guidelines"]["general"]:
         lines.append(f"- {guideline}")
-    
+
     lines.extend([
         "",
         "## Design Principles",
@@ -259,7 +259,7 @@ def to_markdown() -> str:
     ])
     for principle in to_machine_readable()["prevention_guidelines"]["design_principles"]:
         lines.append(f"- {principle}")
-    
+
     lines.append("")
     return "\n".join(lines)
 
@@ -271,24 +271,24 @@ def save_documentation(
 ) -> Dict[str, str]:
     """
     Save documentation to files.
-    
+
     Returns mapping of file paths to their contents.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     results = {}
-    
+
     if include_json:
         json_path = output_dir / "patterns.json"
         json_content = json.dumps(to_machine_readable(), indent=2)
         json_path.write_text(json_content)
         results["json"] = str(json_path)
-    
+
     if include_markdown:
         md_path = output_dir / "PATTERNS.md"
         md_content = to_markdown()
         md_path.write_text(md_content)
         results["markdown"] = str(md_path)
-    
+
     return results

@@ -731,6 +731,28 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    if args.command == "fix":
+        from aira.fix import generate_fix_report, get_fix_suggestion
+        if args.apply:
+            parser.error("Automatic fixes are not implemented; use --dry-run to view suggestions")
+        try:
+            scanner = AIRAScanner(str(Path(args.target).expanduser()))
+            result = scanner.scan(mode="static")
+        except (ScanTargetError, ScannerInputError) as exc:
+            print(f"Input error: {exc}", file=sys.stderr)
+            sys.exit(EXIT_INPUT_OR_USAGE)
+        except ScannerExecutionError as exc:
+            print(f"Scan failed: {exc}", file=sys.stderr)
+            sys.exit(EXIT_OPERATIONAL_FAILURE)
+        if args.output == "json":
+            print(json.dumps({"findings": result.findings, "suggestions": [
+                {"check_id": f["check_id"], "suggestion": get_fix_suggestion(f["check_id"])}
+                for f in result.findings
+            ]}))
+        else:
+            print(generate_fix_report(result.findings))
+        sys.exit(exit_code_for_result(result, "none"))
+
     if args.command == "scan":
         target_arg = Path(args.target).expanduser()
         try:

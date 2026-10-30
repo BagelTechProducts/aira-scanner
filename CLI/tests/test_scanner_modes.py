@@ -4,11 +4,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from hypothesis import given, settings
-from hypothesis import strategies as st
-
 from aira.llm import LLMConfig, LLMRoutingError
 from aira.scanner import AIRAScanner, ScannerInputError
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 class ScannerModeTests(unittest.TestCase):

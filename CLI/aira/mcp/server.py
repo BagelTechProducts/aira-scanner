@@ -17,10 +17,8 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from pathlib import Path
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse, parse_qs
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -40,80 +38,16 @@ class ReviewConfig:
 CONFIG = ReviewConfig()
 
 
-class MCPRequestHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for MCP JSON-RPC protocol."""
-    
-    def log_message(self, format, *args):
-        """Custom log format."""
-        logger.info("%s - %s", self.address_string(), format % args)
-    
-    def _send_json_response(self, data: Dict[str, Any], status: int = 200):
-        """Send JSON response."""
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(json.dumps(data, indent=2).encode())
-    
-    def do_OPTIONS(self):
-        """Handle CORS preflight."""
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
-    
-    def do_GET(self):
-        """Handle GET requests for resources."""
-        parsed = urlparse(self.path)
-        path = parsed.path.rstrip('/')
-        
-        if path == "/health":
-            self._send_json_response({"status": "healthy", "provider": CONFIG.provider})
-        elif path == "/resources":
-            self._list_resources()
-        elif path.startswith("/resources/"):
-            uri = path[len("/resources/"):]
-            self._read_resource(uri)
-        else:
-            self._send_json_response({"error": "Not found"}, 404)
-    
-    def do_POST(self):
-        """Handle POST requests for RPC calls."""
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length)
-        
-        try:
-            request = json.loads(body) if body else {}
-        except json.JSONDecodeError:
-            self._send_json_response({"error": "Invalid JSON"}, 400)
-            return
-        
-        method = request.get("jsonrpc") == "2.0" and request.get("method")
-        params = request.get("params", {})
-        
-        if method == "tools/call":
-            result = self._call_tool(params.get("name"), params.get("arguments"))
-        elif method == "tools/list":
-            result = {"tools": self._list_tools()}
-        elif method == "resources/list":
-            result = {"resources": self._list_resources_static()}
-        elif method == "resources/read":
-            result = self._read_resource_static(params.get("uri"))
-        else:
-            result = {"error": f"Unknown method: {method}"}
-        
-        response = {"jsonrpc": "2.0", "id": request.get("id"), **result}
-        self._send_json_response(response)
-    
+class ReviewService:
+    """Transport-independent review tools and resources."""
+
     def _list_tools(self) -> List[Dict[str, Any]]:
         """List available tools."""
         return [
             {
-                "type": "function",
                 "name": "review_code",
                 "description": "Review code for fail-soft patterns C01-C15",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {
                         "code": {"type": "string", "description": "Code to review"},
@@ -123,10 +57,9 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
                 },
             },
             {
-                "type": "function",
                 "name": "get_fix_suggestions",
                 "description": "Get fix suggestions for check IDs",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {
                         "check_ids": {"type": "array", "items": {"type": "string"}, "description": "Check IDs like C01, C03"},
@@ -134,10 +67,9 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
                 },
             },
             {
-                "type": "function",
                 "name": "explain_pattern",
                 "description": "Get detailed explanation of a pattern",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {
                         "check_id": {"type": "string", "description": "Check ID"},
@@ -146,7 +78,7 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
                 },
             },
         ]
-    
+
     def _list_resources_static(self) -> List[Dict[str, str]]:
         """List available resources."""
         return [
@@ -163,56 +95,36 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
                 "mimeType": "text/markdown",
             },
         ]
-    
-    def _read_resource(self, uri: str):
-        """Read resource via GET."""
-        resource = self._read_resource_static(uri) if uri else {"error": "No URI"}
-        self._send_json_response(resource)
-    
+
     def _read_resource_static(self, uri: str) -> Dict[str, Any]:
         """Read a resource by URI."""
         if uri == "aira://patterns":
-            return {"contents": self._get_patterns_json()}
+            return {"contents": [{"uri": uri, "mimeType": "application/json", "text": self._get_patterns_json()}]}
         elif uri == "aira://patterns.md":
-            return {"contents": self._get_patterns_markdown()}
+            return {"contents": [{"uri": uri, "mimeType": "text/markdown", "text": self._get_patterns_markdown()}]}
         return {"error": f"Unknown resource: {uri}"}
-    
+
     def _get_patterns_json(self) -> str:
         """Get patterns in JSON format."""
         # Import here to avoid circular imports
-        sys.path.insert(0, str(Path(__file__).parent.parent))
-        from doc import to_machine_readable
+        from aira.doc import to_machine_readable
         return json.dumps(to_machine_readable(), indent=2)
-    
+
     def _get_patterns_markdown(self) -> str:
         """Get patterns in Markdown format."""
-        sys.path.insert(0, str(Path(__file__).parent.parent))
-        from doc import to_markdown
+        from aira.doc import to_markdown
         return to_markdown()
-    
-    def _list_resources(self):
-        """List resources via GET."""
-        self._send_json_response({
-            "resources": [
-                {"uri": "aira://patterns", "name": "Patterns (JSON)"},
-                {"uri": "aira://patterns.md", "name": "Patterns (Markdown)"},
-            ]
-        })
-    
-    def _list_tools(self):
-        """List tools via GET."""
-        self._send_json_response({"tools": self._list_tools()})
-    
+
     def _call_tool(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Call a tool by name."""
         if name == "review_code":
-            return {"content": self._review_code(args)}
+            return {"content": [{"type": "text", "text": self._review_code(args)}]}
         elif name == "get_fix_suggestions":
-            return {"content": self._get_fix_suggestions(args)}
+            return {"content": [{"type": "text", "text": self._get_fix_suggestions(args)}]}
         elif name == "explain_pattern":
-            return {"content": self._explain_pattern(args)}
+            return {"content": [{"type": "text", "text": self._explain_pattern(args)}]}
         return {"error": f"Unknown tool: {name}"}
-    
+
     def _review_code(self, args: Dict[str, Any]) -> str:
         """Review code for fail-soft patterns (C01-C15).
 
@@ -227,6 +139,11 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
         if not code:
             return json.dumps({"error": "No code provided"})
 
+        if len(code) > CONFIG.max_context_chars:
+            return json.dumps({"error": "Code exceeds configured context limit"})
+        if language.lower() not in {"python", "py"} and not CONFIG.api_key:
+            return json.dumps({"error": "Static review only supports Python; configure NVIDIA for other languages"})
+
         # Model-powered review via NVIDIA NIM (requires NVIDIA_API_KEY)
         if CONFIG.api_key and CONFIG.provider == "nvidia":
             llm = self._llm_review(code, language)
@@ -234,6 +151,8 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
                 return json.dumps(llm)
             # Fall through to the static scanner on any NIM error.
 
+        if language.lower() not in {"python", "py"}:
+            return json.dumps({"error": "Model review failed; static review only supports Python"})
         return json.dumps(self._static_review(code))
 
     def _llm_review(self, code: str, language: str) -> Optional[Dict[str, Any]]:
@@ -340,11 +259,10 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
     def _get_fix_suggestions(self, args: Dict[str, Any]) -> str:
         """Get fix suggestions."""
         check_ids = args.get("check_ids", [])
-        
+
         # Import fix module
-        sys.path.insert(0, str(Path(__file__).parent.parent))
         try:
-            from fix import get_fix_suggestion
+            from aira.fix import get_fix_suggestion
             suggestions = []
             for cid in check_ids:
                 s = get_fix_suggestion(cid)
@@ -358,16 +276,15 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
                 "C03": {"check_id": "C03", "problem": "Silent exception suppression", "suggestion": "Log and re-raise specific exceptions"},
             }
             return json.dumps([inline.get(c, {"error": f"Unknown: {c}"}) for c in check_ids])
-    
+
     def _explain_pattern(self, args: Dict[str, Any]) -> str:
         """Explain a pattern."""
         check_id = args.get("check_id", "")
         if not check_id:
             return json.dumps({"error": "No check_id provided"})
-        
-        sys.path.insert(0, str(Path(__file__).parent.parent))
+
         try:
-            from doc import get_pattern
+            from aira.doc import get_pattern
             p = get_pattern(check_id)
             if p:
                 return json.dumps({
@@ -383,42 +300,107 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
             return json.dumps({"error": "Doc module not available"})
 
 
-def main():
-    """Main entry point."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="NVIDIAReview MCP Server")
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8080, help="Port to bind to")
-    parser.add_argument("--stdio", action="store_true", help="Use stdio protocol")
-    args = parser.parse_args()
-    
-    if args.stdio:
-        print("NVIDIAReview MCP Server (stdio mode)", file=sys.stderr)
-        while True:
-            try:
-                line = sys.stdin.readline()
-                if not line:
-                    break
-                try:
-                    req = json.loads(line)
-                    handler = MCPRequestHandler(None, None, None)
-                    result = handler._call_tool(req.get("method", ""), req.get("params", {}))
-                    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": req.get("id"), **result}) + "\n")
-                    sys.stdout.flush()
-                except Exception as e:
-                    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": None, "error": str(e)}) + "\n")
-                    sys.stdout.flush()
-            except KeyboardInterrupt:
-                break
-    else:
-        server = HTTPServer((args.host, args.port), MCPRequestHandler)
-        logger.info("NVIDIAReview MCP server running on %s:%d", args.host, args.port)
+SERVICE = ReviewService()
+
+
+def dispatch(request):
+    """Process JSON-RPC for HTTP and newline-delimited MCP stdio."""
+    if not isinstance(request, dict) or request.get("jsonrpc") != "2.0":
+        return {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid Request"}}
+    request_id = request.get("id")
+    method = request.get("method")
+    if not isinstance(method, str):
+        return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32600, "message": "Invalid Request"}}
+    if "id" not in request:
+        return None
+    try:
+        params = request.get("params", {})
+        if not isinstance(params, dict):
+            raise ValueError("params must be an object")
+        if method == "initialize":
+            result = {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}, "resources": {}},
+                      "serverInfo": {"name": "aira-nvidiareview", "version": "1.0.0"}}
+        elif method == "ping":
+            result = {}
+        elif method == "tools/list":
+            result = {"tools": SERVICE._list_tools()}
+        elif method == "resources/list":
+            result = {"resources": SERVICE._list_resources_static()}
+        elif method == "resources/read":
+            result = SERVICE._read_resource_static(params.get("uri"))
+        elif method == "tools/call":
+            arguments = params.get("arguments", {})
+            if not isinstance(arguments, dict):
+                raise ValueError("arguments must be an object")
+            result = SERVICE._call_tool(params.get("name"), arguments)
+        else:
+            return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Method not found"}}
+        if "error" in result:
+            raise ValueError(result["error"])
+        return {"jsonrpc": "2.0", "id": request_id, "result": result}
+    except (ValueError, TypeError, AttributeError, KeyError):
+        return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": "Invalid params"}}
+
+
+class MCPRequestHandler(BaseHTTPRequestHandler):
+    """Simple JSON-RPC HTTP adapter; standard MCP clients should use stdio."""
+    def _send_json(self, payload, status=200):
+        data = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path == "/health":
+            self._send_json({"status": "healthy", "provider": CONFIG.provider})
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
+    def do_POST(self):
+        # This unauthenticated adapter is intended for loopback use only.
+        if self.headers.get("Origin"):
+            self._send_json({"error": "Browser origins are not accepted"}, 403)
+            return
         try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            logger.info("Shutting down...")
-            server.shutdown()
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or length > 1_000_000:
+                self._send_json({"error": "Invalid body size"}, 413)
+                return
+            request = json.loads(self.rfile.read(length))
+        except (ValueError, UnicodeDecodeError):
+            self._send_json({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, 400)
+            return
+        response = dispatch(request)
+        if response is None:
+            self.send_response(204)
+            self.end_headers()
+        else:
+            self._send_json(response)
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="AIRA MCP stdio server / JSON-RPC HTTP adapter")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--stdio", action="store_true")
+    args = parser.parse_args()
+    if args.stdio:
+        for line in sys.stdin:
+            try:
+                response = dispatch(json.loads(line))
+            except (ValueError, UnicodeDecodeError):
+                response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
+            if response is not None:
+                print(json.dumps(response), flush=True)
+    else:
+        with HTTPServer((args.host, args.port), MCPRequestHandler) as server:
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                pass
 
 
 if __name__ == "__main__":

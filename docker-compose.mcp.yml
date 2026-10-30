@@ -1,45 +1,13 @@
-version: '3.8'
-
 services:
   nvidiareview-mcp:
     build:
       context: .
       dockerfile: Dockerfile.nvidiareview
-    container_name: nvidiareview-mcp
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
-      # Required: Your NVIDIA API key
-      # - NVIDIA_API_KEY: set in .env or override below
-      
-      # Optional: Configuration
-      - AIRA_NVIDIA_MODEL=openai/gpt-oss-20b
-      - AIRA_TIMEOUT=120
-      - AIRA_MAX_CONTEXT_CHARS=120000
-      - AIRA_PROVIDER=nvidia
-      
-    # Load from .env file if present
-    env_file:
-      - .env
-      
-    # Restart policy
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      AIRA_NVIDIA_MODEL: ${AIRA_NVIDIA_MODEL:-openai/gpt-oss-20b}
+      AIRA_TIMEOUT: 120
+      AIRA_MAX_CONTEXT_CHARS: 120000
     restart: unless-stopped
-    
-    # Health check
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Optional: MCP Proxy for multiple agents
-  mcproxy:
-    image: ghcr.io/modelcontextprotocol/proxy:latest
-    container_name: mcp-proxy
-    ports:
-      - "8000:8000"
-    depends_on:
-      - nvidiareview-mcp
-    environment:
-      - PORT=8000
