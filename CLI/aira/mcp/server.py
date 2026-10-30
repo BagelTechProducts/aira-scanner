@@ -17,7 +17,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
@@ -35,6 +35,11 @@ class ReviewConfig:
     api_key: str = os.environ.get("NVIDIA_API_KEY", "")
     timeout: int = int(os.environ.get("AIRA_TIMEOUT", "120"))
     max_context_chars: int = int(os.environ.get("AIRA_MAX_CONTEXT_CHARS", "120000"))
+    # OpenCode API: shell out to `opencode` (opencrunc), which holds its own
+    # model credentials, so the server need not carry an API key.
+    model_source: str = os.environ.get("AIRA_MODEL_SOURCE", "auto")
+    open_code_model: str = os.environ.get("AIRA_OPENCODE_MODEL", "openai/gpt-oss-20b")
+    open_code_bin: str = os.environ.get("AIRA_OPENCODE_BIN", "opencode")
 
 
 CONFIG = ReviewConfig()
@@ -236,6 +241,157 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
 
         return json.dumps(self._static_review(code))
 
+    def _review_code(self, args: Dict[str, Any]) -> str:
+        """Review code for fail-soft patterns (C01-C15).
+
+        Resolution order for the model-powered path:
+          1. OpenCode API — shell out to `opencode` (opencrunc) when
+             AIRA_MODEL_SOURCE allows it and the binary is on PATH. opencrunc
+             holds its own model credentials, so no API key is required here.
+          2. NVIDIA NIM — POST to chat/completions (openai/gpt-oss-20b) when
+             NVIDIA_API_KEY is set.
+          3. Static AST scanner (C01 / C03 / SYNTAX) — always-available fallback.
+        The API key (when used) is read into ReviewConfig.api_key at import and
+        is never logged.
+        """
+        code = args.get("code", "")
+        language = args.get("language", "python")
+        if not code:
+            return json.dumps({"error": "No code provided"})
+
+        # 1) OpenCode API (preferred: opencrunc supplies the model credentials)
+        src = CONFIG.model_source
+        if src in ("auto", "opencode"):
+            oc = self._open_code_review(code, language)
+            if oc is not None:
+                return json.dumps(oc)
+            if src == "opencode":
+                # Explicit OpenCode mode; it failed -> do not guess another backend.
+                return json.dumps(self._static_review(code))
+            # auto mode: fall through to NVIDIA NIM, then static.
+
+        # 2) NVIDIA NIM (requires NVIDIA_API_KEY)
+        if CONFIG.api_key and CONFIG.provider == "nvidia":
+            llm = self._llm_review(code, language)
+            if llm is not None:
+                return json.dumps(llm)
+            # Fall through to the static scanner on any NIM error.
+
+        # 3) Static fallback
+        return json.dumps(self._static_review(code))
+
+    def _open_code_review(self, code: str, language: str) -> Optional[Dict[str, Any]]:
+        """Review code via the OpenCode API (opencrunc `opencode run`).
+
+        opencrunc holds its own model credentials, so the server does not need
+        an API key on this path. Returns the parsed review dict, or None on any
+        failure so the caller can fall back (graceful degradation).
+        """
+        import shutil
+        import subprocess
+        import tempfile
+
+        bin_name = CONFIG.open_code_bin
+        if not shutil.which(bin_name):
+            logger.debug("opencode not on PATH; skipping OpenCode arm")
+            return None
+
+        suffix = ".py" if language == "python" else f".{language}"
+        fd, tmp = tempfile.mkstemp(suffix=suffix, text=True)
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(code)
+            prompt = (
+                'You are AIRA (AI-Induced Risk Audit), a fail-soft pattern '
+                'reviewer (taxonomy C01-C15). Review the attached file for '
+                'fail-soft/fail-open defects: C01 success-after-exception, '
+                'C03 bare/broad swallowed excepts, C04 silent fallbacks, '
+                'C02 missing audit evidence, C06 ambiguous returns, C15 retry-'
+                'without-idempotency near writes, C09 env-dependent safety '
+                'drift, and any other C01-C15 pattern. C07 and C12 require '
+                'human review only. Do NOT call any tools. Return ONLY a JSON '
+                'object with keys: findings (list of {check_id, severity, line, '
+                'description}), summary, confidence, engine. If a line cannot be '
+                'determined use 0. No prose before or after.'
+            )
+            cmd = [bin_name, "run", "--auto", "-m", CONFIG.open_code_model,
+                   "-f", tmp, prompt]
+            try:
+                proc = subprocess.run(cmd, timeout=CONFIG.timeout,
+                                      capture_output=True, text=True)
+            except subprocess.TimeoutExpired:
+                logger.warning("OpenCode review timed out; falling back to static AST")
+                return None
+            except FileNotFoundError:
+                logger.warning("opencode binary disappeared; falling back to static AST")
+                return None
+
+            if proc.returncode != 0:
+                logger.warning("OpenCode review failed (rc=%s): %s",
+                               proc.returncode, (proc.stderr or "")[:300])
+                return None
+
+            parsed = self._parse_model_json(proc.stdout)
+            if parsed is not None:
+                parsed.setdefault("engine", "nvidiareview:opencode")
+                parsed.setdefault("model", CONFIG.open_code_model)
+            return parsed
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+    def _parse_model_json(self, raw: str) -> Optional[Dict[str, Any]]:
+        """Extract a JSON review object from raw model output.
+
+        Unwraps a ```json ... ``` fence (string ops, no regex), then locates the
+        first balanced {...} object and parses it. Returns None if no JSON object
+        can be parsed.
+        """
+        if not raw:
+            return None
+        import re as _re
+        text = _re.sub(r"<arg_key>thought</arg_key><arg_key>analysis</arg_key>.*?</arg_key><arg_key>analysis</arg_key>",
+                       "", raw, flags=_re.DOTALL)
+        # Unwrap a ```json (or ```text) fenced block if present.
+        if "```" in text:
+            segs = text.split("```")
+            if len(segs) >= 3 and segs[1].strip():
+                inner = segs[1].strip()
+                first_line = inner.split("\n", 1)[0].strip()
+                if first_line in ("json", "text"):
+                    inner = inner.split("\n", 1)[1]
+                text = inner
+        start = text.find("{")
+        if start == -1:
+            return None
+        depth = 0
+        in_str = False
+        esc = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ord(ch) == 92:  # backslash
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+            else:
+                if ch == '"':
+                    in_str = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(text[start:i + 1])
+                        except json.JSONDecodeError:
+                            return None
+        return None
+
     def _llm_review(self, code: str, language: str) -> Optional[Dict[str, Any]]:
         """Call NVIDIA NIM chat/completions for an AIRA fail-soft review.
 
@@ -412,7 +568,7 @@ def main():
             except KeyboardInterrupt:
                 break
     else:
-        server = HTTPServer((args.host, args.port), MCPRequestHandler)
+        server = ThreadingHTTPServer((args.host, args.port), MCPRequestHandler)
         logger.info("NVIDIAReview MCP server running on %s:%d", args.host, args.port)
         try:
             server.serve_forever()
