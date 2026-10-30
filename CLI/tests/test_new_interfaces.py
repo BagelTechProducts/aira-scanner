@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
 from aira.analyze import Engine, EngineConfig
 from aira.cli import main
 from aira.mcp.server import CONFIG, dispatch

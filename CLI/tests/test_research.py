@@ -202,7 +202,7 @@ class ResearchHelpersTests(unittest.TestCase):
         result = _sample_result()
         with tempfile.TemporaryDirectory() as tmpdir:
             sink = Path(tmpdir) / "research.jsonl"
-            with mock.patch.dict(os.environ, {"AIRA_RESEARCH_JSONL": str(sink)}, clear=False):
+            with mock.patch.dict(os.environ, {"AIRA_RESEARCH_JSONL": str(sink)}, clear=True):
                 response = submit_aggregate_research(result)
 
             lines = sink.read_text(encoding="utf-8").splitlines()
